@@ -1,3 +1,4 @@
+use std::convert::TryInto;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum Node {
@@ -167,6 +168,13 @@ impl Node {
         }
     }
 
+    pub fn try_into_array<'a, T>(&'a self) -> Result<T, TryIntoError>
+    where 
+        T: std::convert::TryFrom<&'a [u8]> 
+    {
+        self.try_into().and_then(|x: &[u8]| x.try_into().map_err(|_| TryIntoError::LengthMismatch))
+    }
+
 }
 
 fn read_u8<R: std::io::Read>(input: &mut R) -> Result<u8, Error> {
@@ -180,12 +188,39 @@ fn read_u64<R: std::io::Read>(input: &mut R) -> Result<u64, Error> {
     Ok(u64::from_le_bytes(buf))
 }
 
+impl std::convert::TryFrom<Node> for Vec<u8> {
+    type Error = TryIntoError;
+    fn try_from(value: Node) -> Result<Vec<u8>, Self::Error> {
+        match value {
+            Node::Inner(_) => Err(TryIntoError::ExpectedLeaf),
+            Node::Leaf(bytes) => Ok(bytes)
+        }
+    }
+}
+
+impl<'a> std::convert::TryFrom<&'a Node> for &'a [u8] {
+    type Error = TryIntoError;
+    fn try_from(value: &Node) -> Result<&[u8], Self::Error> {
+        match value {
+            Node::Inner(_) => Err(TryIntoError::ExpectedLeaf),
+            Node::Leaf(bytes) => Ok(bytes.as_slice())
+        }
+    }
+}
+
+
 #[derive(Debug)]
 pub enum Error {
     IOError(std::io::Error),
     InvalidMagicNumber,
     InvalidNodeType,
-    AdditionalBytes
+    AdditionalBytes,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TryIntoError {
+    ExpectedLeaf,
+    LengthMismatch,
 }
 
 impl From<std::io::Error> for Error {
@@ -342,4 +377,18 @@ fn test_recursive() {
     // test decode
     let mut bytes_slice = &exp[..];
     assert_eq!(node, Node::deserialize_from(&mut bytes_slice).unwrap());
+}
+
+#[test]
+fn try_into() {
+    let node = Node::Leaf(vec!(1,2,3,4));
+
+    let arr = node.try_into_array::<&[u8;4]>();
+    let arr2: Result<&[u8;10],_> = node.try_into_array();
+    
+    assert_eq!(arr, Ok(&[1, 2, 3, 4]));
+    assert_eq!(arr2, Err(TryIntoError::LengthMismatch));
+
+    let node2 = Node::Inner(vec!());
+    assert_eq!(node2.try_into_array::<&[u8;1]>(), Err(TryIntoError::ExpectedLeaf));
 }
