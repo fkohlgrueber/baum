@@ -175,6 +175,67 @@ impl Node {
         self.try_into().and_then(|x: &[u8]| x.try_into().map_err(|_| TryIntoError::LengthMismatch))
     }
 
+    pub fn pretty_print(&self, max_width: usize) -> String {
+        let mut s = String::new();
+        self._pretty_print(max_width, 0, &mut s).unwrap();
+        s
+    }
+
+    fn _pretty_print<T>(&self, max_width: usize, indent: usize, fmt: &mut T) -> Result<(), std::fmt::Error> 
+    where
+        T: std::fmt::Write
+    {
+        match self {
+            Node::Leaf(bytes) => {
+                write!(fmt, "0x")?;
+                let mut pos = indent + 2;
+                for (idx, b) in bytes.iter().enumerate() {
+                    if pos + 3 > max_width {
+                        write!(fmt, "\n{}", " ".repeat(indent+2))?;
+                        pos = indent + 2;
+                    } else if idx > 0 {
+                        write!(fmt, "_")?;
+                        pos += 1;
+                    }
+                    write!(fmt, "{:02x}", b)?;
+                    pos += 2;
+                }
+            },
+            Node::Inner(nodes) => {
+                let width = self._width();
+                if (indent + width) <= max_width  {
+                    write!(fmt, "(")?;
+                    for (idx, n) in nodes.iter().enumerate() {
+                        if idx > 0 {
+                            write!(fmt, " ")?;
+                        }
+                        n._pretty_print(max_width, indent, fmt)?;
+                    }
+                    write!(fmt, ")")?;
+                } else {
+                    
+                    write!(fmt, "(\n")?;
+
+                    for n in nodes {
+                        write!(fmt, "{}", " ".repeat(indent+4))?;
+                        n._pretty_print(max_width, indent+4, fmt)?;
+                        writeln!(fmt)?;
+                    }
+                    
+                    write!(fmt, "{})", " ".repeat(indent))?;
+                    
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn _width(&self) -> usize {
+        match self {
+            Node::Leaf(bytes) => 2 + 2 * bytes.len() + bytes.len().saturating_sub(1),
+            Node::Inner(nodes) => 2 + nodes.iter().map(|x| x._width()).sum::<usize>() + nodes.len().saturating_sub(1),
+        }
+    }
 }
 
 fn read_u8<R: std::io::Read>(input: &mut R) -> Result<u8, Error> {
@@ -392,3 +453,42 @@ fn try_into() {
     let node2 = Node::Inner(vec!());
     assert_eq!(node2.try_into_array::<&[u8;1]>(), Err(TryIntoError::ExpectedLeaf));
 }
+
+#[test]
+fn pretty_print() {
+    let node = Node::Inner(vec!(
+        Node::Leaf(vec!()),
+        Node::Inner(vec!(
+            Node::Leaf(vec!(2, 3, 4)),
+            Node::Inner(vec!()),
+        )),
+        Node::Leaf(vec!(3, 4)),
+    ));
+    assert_eq!(node.pretty_print(80), "(0x (0x02_03_04 ()) 0x03_04)");
+    assert_eq!(node.pretty_print(28), "(0x (0x02_03_04 ()) 0x03_04)");
+    assert_eq!(node.pretty_print(27), "(\n    0x\n    (0x02_03_04 ())\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(19), "(\n    0x\n    (0x02_03_04 ())\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(18), "(\n    0x\n    (\n        0x02_03_04\n        ()\n    )\n    0x03_04\n)");
+}
+
+#[test]
+fn pretty_print_long_bytes() {
+    let node = Node::Inner(vec!(
+        Node::Leaf(vec!()),
+        Node::Inner(vec!(
+            Node::Leaf((0..20).collect()),
+            Node::Inner(vec!()),
+        )),
+        Node::Leaf(vec!(3, 4)),
+    ));
+    assert_eq!(node.pretty_print(80), "(0x (0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11_12_13 ()) 0x03_04)");
+    assert_eq!(node.pretty_print(79), "(0x (0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11_12_13 ()) 0x03_04)");
+    assert_eq!(node.pretty_print(78), "(\n    0x\n    (0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11_12_13 ())\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(69), "(\n    0x\n    (\n        0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11_12_13\n        ()\n    )\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(68), "(\n    0x\n    (\n        0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11_12\n          13\n        ()\n    )\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(67), "(\n    0x\n    (\n        0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11_12\n          13\n        ()\n    )\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(66), "(\n    0x\n    (\n        0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11_12\n          13\n        ()\n    )\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(65), "(\n    0x\n    (\n        0x00_01_02_03_04_05_06_07_08_09_0a_0b_0c_0d_0e_0f_10_11\n          12_13\n        ()\n    )\n    0x03_04\n)");
+    assert_eq!(node.pretty_print(32), "(\n    0x\n    (\n        0x00_01_02_03_04_05_06\n          07_08_09_0a_0b_0c_0d\n          0e_0f_10_11_12_13\n        ()\n    )\n    0x03_04\n)");
+}
+
