@@ -19,17 +19,11 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, String> {
                     return Err("Expected 'x'!".to_string());
                 }
                 
-                let mut ret = vec!();
-                let mut first_char_val = None;
+                
+                let mut digits = vec!();
                 while let Some(c) = char_iter.peek() {
                     if let Some(d) = c.to_digit(16) {
-                        // Append char/byte
-                        if first_char_val.is_none() {
-                            first_char_val = Some(d as u8)
-                        } else {
-                            ret.push(first_char_val.unwrap()*16+d as u8);
-                            first_char_val = None;
-                        }
+                        digits.push(d as u8);
                         char_iter.next();
                     } else if *c == '_' {
                         // ignore underscores
@@ -38,9 +32,18 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, String> {
                         break;
                     }
                 }
-                if first_char_val.is_some() {
-                    return Err("byte sequence incomplete".to_string());
+
+                let is_odd = digits.len() % 2 == 1;
+                let mut num_iter = digits.into_iter();
+                let mut ret = vec!();
+                if is_odd {
+                    ret.push(num_iter.next().unwrap());
                 }
+                while let Some(d) = num_iter.next() {
+                    let next = num_iter.next().unwrap();
+                    ret.push(d*0x10 + next);
+                }
+                
                 tokens.push(Token::Bytes(ret));
             }
             c if c.is_ascii_whitespace() => {
