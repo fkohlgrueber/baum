@@ -1,3 +1,7 @@
+mod parser;
+
+pub use parser::ParseResult;
+
 use std::convert::TryInto;
 
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
@@ -236,6 +240,10 @@ impl Node {
             Node::Inner(nodes) => 2 + nodes.iter().map(|x| x._width()).sum::<usize>() + nodes.len().saturating_sub(1),
         }
     }
+
+    pub fn parse(s: &str) -> parser::ParseResult {
+        parser::ParseResult::parse(s)
+    }
 }
 
 fn read_u8<R: std::io::Read>(input: &mut R) -> Result<u8, Error> {
@@ -277,6 +285,20 @@ pub enum Error {
     InvalidNodeType,
     AdditionalBytes,
 }
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::IOError(e) => e.fmt(f)?,
+            Error::InvalidMagicNumber => write!(f, "Invalid magic number.")?,
+            Error::InvalidNodeType => write!(f, "Input contains an invalid node type.")?,
+            Error::AdditionalBytes => write!(f, "Input contains additional bytes.")?,
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for Error { }
 
 #[derive(Debug, PartialEq)]
 pub enum TryIntoError {
