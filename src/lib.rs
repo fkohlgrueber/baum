@@ -1,10 +1,11 @@
 mod parser;
 
+use serde::{Serialize, Deserialize};
 pub use parser::ParseResult;
 
 use std::convert::TryInto;
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Serialize, Deserialize)]
 pub enum Node {
     Leaf(Vec<u8>),
     Inner(Vec<Node>)
